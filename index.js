@@ -35,7 +35,11 @@ async function run() {
       const result = await fleetCollections.find().toArray();
       res.json(result);
     });
-    
+    app.get("/explore/:fleetId", async (req, res) => {
+      const {fleetId}=req.params;
+       const result=await fleetCollections.findOne({_id:new ObjectId(fleetId)})
+      res.json(result);
+    });
 
     
 
