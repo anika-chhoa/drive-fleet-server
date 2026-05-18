@@ -35,17 +35,22 @@ async function run() {
       const result = await fleetCollections.find().toArray();
       res.json(result);
     });
-    app.get("/explore/:fleetId", async (req, res) => {
-      const {fleetId}=req.params;
-       const result=await fleetCollections.findOne({_id:new ObjectId(fleetId)})
+
+    app.get("/availableCars", async (req, res) => {
+      const result = await fleetCollections
+        .find({ availabilityStatus: "Available" })
+        .limit(6)
+        .toArray();
       res.json(result);
     });
 
-    
-
-
-
-
+    app.get("/explore/:fleetId", async (req, res) => {
+      const { fleetId } = req.params;
+      const result = await fleetCollections.findOne({
+        _id: new ObjectId(fleetId),
+      });
+      res.json(result);
+    });
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
