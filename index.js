@@ -32,10 +32,53 @@ async function run() {
     const fleetCollections = db.collection("fleetCollections");
     const bookingCollection = db.collection("bookings");
 
+    // app.get("/explore", async (req, res) => {
+    //   const {search}=req.query;
+    //   let cursor;
+
+    //   if(search){
+    //     cursor=await fleetCollections.find({
+    //       $or:[
+    //         {
+    //           carName:{
+    //             $regex:search,
+    //             $options:'i',
+    //           }
+    //         },
+    //         {
+    //           carType:{
+    //             $regex:search,
+    //             $options:'i',
+    //           }
+    //         }
+    //       ]
+    //     })
+    //   }else{
+    //     cursor=fleetCollections.find();
+    //   }
+    //   const result = await cursor.toArray();
+    //   res.json(result);
+    // });
+
     app.get("/explore", async (req, res) => {
-      const result = await fleetCollections.find().toArray();
-      res.json(result);
-    });
+  const { search, type } = req.query;  // ← add type here
+
+  const query = {};
+
+  if (search) {
+    query.$or = [
+      { carName: { $regex: search, $options: "i" } },
+      { carType: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  if (type) {
+    query.carType = { $regex: `^${type}$`, $options: "i" }; // exact match
+  }
+
+  const result = await fleetCollections.find(query).toArray();
+  res.json(result);
+});
 
     app.get("/availableCars", async (req, res) => {
       const result = await fleetCollections
