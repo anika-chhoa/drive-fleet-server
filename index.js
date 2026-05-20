@@ -78,6 +78,31 @@ async function run() {
       res.json(result);
     });
 
+    app.get("/bookings/:userId", async (req, res) => {
+      const { userId } = req.params;
+      const result = await bookingCollection.find({ userId }).toArray();
+      res.json(result);
+    });
+
+
+    app.post("/add-car",async(req,res)=>{
+      const carData= req.body;
+      const result= await fleetCollections.insertOne(carData);
+      res.json(result)
+    })
+
+
+
+
+
+
+
+
+
+
+
+
+
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
     );
