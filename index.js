@@ -5,13 +5,13 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 dotenv.config();
 const app = express();
 app.use(cors());
+app.use(express.json());
 const port = process.env.PORT || 8080;
 
 //
 //
 
-const uri =
-  "mongodb+srv://drive-fleet:YgUgm0gbz621VURG@cluster0.icbwmfr.mongodb.net/?appName=Cluster0";
+const uri = process.env.MONGODB_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -30,6 +30,7 @@ async function run() {
     // await client.db("admin").command({ ping: 1 });
     const db = client.db("drive-fleet");
     const fleetCollections = db.collection("fleetCollections");
+    const bookingCollection = db.collection("bookings");
 
     app.get("/explore", async (req, res) => {
       const result = await fleetCollections.find().toArray();
@@ -48,6 +49,31 @@ async function run() {
       const { fleetId } = req.params;
       const result = await fleetCollections.findOne({
         _id: new ObjectId(fleetId),
+      });
+      res.json(result);
+    });
+
+    app.patch("/bookings/:carId", async (req, res) => {
+      const { carId } = req.params;
+      const bookingData = req.body;
+      const targetCar = await fleetCollections.findOne({
+        _id: new ObjectId(carId),
+      });
+      if (!targetCar) {
+        res.status(404).json({ success: false, message: "Car not found" });
+      }
+      await fleetCollections.updateOne(
+        { _id: new ObjectId(carId) },
+        {
+          $inc: { bookingCount: 1 },
+          $set: {
+            lastBookingAt: new Date(),
+          },
+        },
+      );
+      const result = await bookingCollection.insertOne({
+        ...bookingData,
+        bookingAt: new Date(),
       });
       res.json(result);
     });
