@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dotenv.config();
 const app = express();
 app.use(cors());
@@ -22,6 +23,31 @@ const client = new MongoClient(uri, {
   },
 });
 
+const JWKS=createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"))
+const verifyToken =async (req, res, next) => {
+  const authHeader = req?.headers.authorization;
+  if (!authHeader) {
+    return res.status(404).json({
+      message: "Unauthorized",
+    });
+  }
+  const token=authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(404).json({
+      message: "Unauthorized",
+    });
+  }
+
+
+  try{
+    const {payload}=await jwtVerify(token,JWKS)
+    console.log(payload)
+    next();
+  }catch(error){
+    res.status(403).json({message:"Forbidden"})
+  }
+
+};
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -32,55 +58,33 @@ async function run() {
     const fleetCollections = db.collection("fleetCollections");
     const bookingCollection = db.collection("bookings");
 
-    // app.get("/explore", async (req, res) => {
-    //   const {search}=req.query;
-    //   let cursor;
-
-    //   if(search){
-    //     cursor=await fleetCollections.find({
-    //       $or:[
-    //         {
-    //           carName:{
-    //             $regex:search,
-    //             $options:'i',
-    //           }
-    //         },
-    //         {
-    //           carType:{
-    //             $regex:search,
-    //             $options:'i',
-    //           }
-    //         }
-    //       ]
-    //     })
-    //   }else{
-    //     cursor=fleetCollections.find();
-    //   }
-    //   const result = await cursor.toArray();
-    //   res.json(result);
-    // });
-
     app.get("/explore", async (req, res) => {
-      const { search, type } = req.query; // ← add type here
-
-      const query = {};
+      const { search } = req.query;
+      let cursor;
 
       if (search) {
-        query.$or = [
-          { carName: { $regex: search, $options: "i" } },
-          { carType: { $regex: search, $options: "i" } },
-        ];
+        cursor = await fleetCollections.find({
+          $or: [
+            {
+              carName: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+            {
+              carType: {
+                $regex: search,
+                $options: "i",
+              },
+            },
+          ],
+        });
+      } else {
+        cursor = fleetCollections.find();
       }
-
-      if (type) {
-        query.carType = { $regex: `^${type}$`, $options: "i" };
-      }
-
-      const result = await fleetCollections.find(query).toArray();
+      const result = await cursor.toArray();
       res.json(result);
     });
-
-
 
     app.get("/availableCars", async (req, res) => {
       const result = await fleetCollections
@@ -90,7 +94,7 @@ async function run() {
       res.json(result);
     });
 
-    app.get("/explore/:fleetId", async (req, res) => {
+    app.get("/explore/:fleetId", verifyToken, async (req, res) => {
       const { fleetId } = req.params;
       const result = await fleetCollections.findOne({
         _id: new ObjectId(fleetId),
@@ -98,46 +102,137 @@ async function run() {
       res.json(result);
     });
 
-    app.patch("/bookings/:carId", async (req, res) => {
-      const { carId } = req.params;
-      const bookingData = req.body;
-      const targetCar = await fleetCollections.findOne({
-        _id: new ObjectId(carId),
-      });
-      if (!targetCar) {
-        res.status(404).json({ success: false, message: "Car not found" });
-      }
-      await fleetCollections.updateOne(
-        { _id: new ObjectId(carId) },
-        {
-          $inc: { bookingCount: 1 },
-          $set: {
-            lastBookingAt: new Date(),
+    // app.patch("/bookings/:carId", async (req, res) => {
+    //   const { carId } = req.params;
+    //   const bookingData = req.body;
+    //   const targetCar = await fleetCollections.findOne({
+    //     _id: new ObjectId(carId),
+    //   });
+    //   if (!targetCar) {
+    //     res.status(404).json({ success: false, message: "Car not found" });
+    //   }
+    //   await fleetCollections.updateOne(
+    //     { _id: new ObjectId(carId) },
+    //     {
+    //       $inc: { bookingCount: 1 },
+    //       $set: {
+    //         lastBookingAt: new Date(),
+    //       },
+    //     },
+    //   );
+    //   const result = await bookingCollection.insertOne({
+    //     ...bookingData,
+    //     bookingAt: new Date(),
+    //   });
+    //   res.json(result);
+    // });
+
+    app.post("/bookings",verifyToken, async (req, res) => {
+      try {
+        const bookingData = req.body;
+
+        const { userId, userName, userEmail, carId } = bookingData;
+
+        if (!userId || !carId) {
+          return res.status(400).json({
+            success: false,
+            message: "userId and carId are required",
+          });
+        }
+
+        const targetCar = await fleetCollections.findOne({
+          _id: new ObjectId(carId),
+        });
+
+        if (!targetCar) {
+          return res.status(404).json({
+            success: false,
+            message: "Car not found",
+          });
+        }
+
+        const alreadyBooked = await bookingCollection.findOne({
+          userId,
+          carId,
+        });
+
+        if (alreadyBooked) {
+          return res.status(400).json({
+            success: false,
+            message: "You already booked this car",
+          });
+        }
+        const newBooking = {
+          ...bookingData,
+
+          bookingAt: new Date(),
+          status: "confirmed",
+        };
+
+        const bookingResult = await bookingCollection.insertOne(newBooking);
+
+        await fleetCollections.updateOne(
+          {
+            _id: new ObjectId(carId),
           },
-        },
-      );
-      const result = await bookingCollection.insertOne({
-        ...bookingData,
-        bookingAt: new Date(),
-      });
-      res.json(result);
+          {
+            $inc: {
+              bookingCount: 1,
+            },
+            $set: {
+              lastBookingAt: new Date(),
+            },
+          },
+        );
+
+        res.status(201).json({
+          success: true,
+          message: "Booking successful",
+          insertedId: bookingResult.insertedId,
+        });
+      } catch (error) {
+        console.log(error);
+
+        res.status(500).json({
+          success: false,
+          message: "Internal server error",
+        });
+      }
     });
 
-    app.get("/bookings/:userId", async (req, res) => {
+    app.get("/bookings/:userId",verifyToken, async (req, res) => {
       const { userId } = req.params;
       const result = await bookingCollection.find({ userId }).toArray();
       res.json(result);
     });
 
-    app.post("/add-car", async (req, res) => {
+    app.post("/add-car",verifyToken, async (req, res) => {
       const carData = req.body;
       const result = await fleetCollections.insertOne(carData);
       res.json(result);
     });
 
-    app.get("/add-car/:userId", async (req, res) => {
+    app.get("/add-car/:userId",verifyToken, async (req, res) => {
       const { userId } = req.params;
-      const result = await bookingCollection.find({ userId }).toArray();
+      const result = await fleetCollections.find({ userId }).toArray();
+      res.json(result);
+    });
+
+    app.patch("/explore/:carId", async (req, res) => {
+      const { carId } = req.params;
+      const updatedData = req.body;
+      const result = await fleetCollections.updateOne(
+        { _id: new ObjectId(carId) },
+        { $set: updatedData },
+      );
+      res.json(result);
+    });
+
+    app.delete("/explore/:carId", async (req, res) => {
+      const { carId } = req.params;
+      const result = await fleetCollections.deleteOne({
+        _id: new ObjectId(carId),
+      });
       res.json(result);
     });
 
