@@ -61,24 +61,26 @@ async function run() {
     // });
 
     app.get("/explore", async (req, res) => {
-  const { search, type } = req.query;  // ← add type here
+      const { search, type } = req.query; // ← add type here
 
-  const query = {};
+      const query = {};
 
-  if (search) {
-    query.$or = [
-      { carName: { $regex: search, $options: "i" } },
-      { carType: { $regex: search, $options: "i" } },
-    ];
-  }
+      if (search) {
+        query.$or = [
+          { carName: { $regex: search, $options: "i" } },
+          { carType: { $regex: search, $options: "i" } },
+        ];
+      }
 
-  if (type) {
-    query.carType = { $regex: `^${type}$`, $options: "i" }; // exact match
-  }
+      if (type) {
+        query.carType = { $regex: `^${type}$`, $options: "i" };
+      }
 
-  const result = await fleetCollections.find(query).toArray();
-  res.json(result);
-});
+      const result = await fleetCollections.find(query).toArray();
+      res.json(result);
+    });
+
+
 
     app.get("/availableCars", async (req, res) => {
       const result = await fleetCollections
@@ -127,24 +129,17 @@ async function run() {
       res.json(result);
     });
 
+    app.post("/add-car", async (req, res) => {
+      const carData = req.body;
+      const result = await fleetCollections.insertOne(carData);
+      res.json(result);
+    });
 
-    app.post("/add-car",async(req,res)=>{
-      const carData= req.body;
-      const result= await fleetCollections.insertOne(carData);
-      res.json(result)
-    })
-
-
-
-
-
-
-
-
-
-
-
-
+    app.get("/add-car/:userId", async (req, res) => {
+      const { userId } = req.params;
+      const result = await bookingCollection.find({ userId }).toArray();
+      res.json(result);
+    });
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
