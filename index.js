@@ -23,30 +23,30 @@ const client = new MongoClient(uri, {
   },
 });
 
-const JWKS=createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"))
-const verifyToken =async (req, res, next) => {
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`),
+);
+const verifyToken = async (req, res, next) => {
   const authHeader = req?.headers.authorization;
   if (!authHeader) {
     return res.status(404).json({
       message: "Unauthorized",
     });
   }
-  const token=authHeader.split(" ")[1];
+  const token = authHeader.split(" ")[1];
   if (!token) {
     return res.status(404).json({
       message: "Unauthorized",
     });
   }
 
-
-  try{
-    const {payload}=await jwtVerify(token,JWKS)
-    console.log(payload)
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+    console.log(payload);
     next();
-  }catch(error){
-    res.status(403).json({message:"Forbidden"})
+  } catch (error) {
+    res.status(403).json({ message: "Forbidden" });
   }
-
 };
 async function run() {
   try {
@@ -59,33 +59,32 @@ async function run() {
     const bookingCollection = db.collection("bookings");
 
     app.get("/explore", async (req, res) => {
-      const { search } = req.query;
-      let cursor;
+      try {
+        const { search, type } = req.query;
 
-      if (search) {
-        cursor = await fleetCollections.find({
-          $or: [
-            {
-              carName: {
-                $regex: search,
-                $options: "i",
-              },
-            },
-            {
-              carType: {
-                $regex: search,
-                $options: "i",
-              },
-            },
-          ],
-        });
-      } else {
-        cursor = fleetCollections.find();
+        let query = {};
+
+        
+        if (search) {
+          query.carName = {
+            $regex: search,
+            $options: "i",
+          };
+        }
+
+        
+        if (type && type !== "All Types") {
+          query.carType = type;
+        }
+
+        const result = await fleetCollections.find(query).toArray();
+
+        res.json(result);
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ message: "Server Error" });
       }
-      const result = await cursor.toArray();
-      res.json(result);
     });
-
     app.get("/availableCars", async (req, res) => {
       const result = await fleetCollections
         .find({ availabilityStatus: "Available" })
@@ -127,7 +126,7 @@ async function run() {
     //   res.json(result);
     // });
 
-    app.post("/bookings",verifyToken, async (req, res) => {
+    app.post("/bookings", verifyToken, async (req, res) => {
       try {
         const bookingData = req.body;
 
@@ -200,19 +199,19 @@ async function run() {
       }
     });
 
-    app.get("/bookings/:userId",verifyToken, async (req, res) => {
+    app.get("/bookings/:userId", verifyToken, async (req, res) => {
       const { userId } = req.params;
       const result = await bookingCollection.find({ userId }).toArray();
       res.json(result);
     });
 
-    app.post("/add-car",verifyToken, async (req, res) => {
+    app.post("/add-car", verifyToken, async (req, res) => {
       const carData = req.body;
       const result = await fleetCollections.insertOne(carData);
       res.json(result);
     });
 
-    app.get("/add-car/:userId",verifyToken, async (req, res) => {
+    app.get("/add-car/:userId", verifyToken, async (req, res) => {
       const { userId } = req.params;
       const result = await fleetCollections.find({ userId }).toArray();
       res.json(result);
@@ -240,7 +239,6 @@ async function run() {
       "Pinged your deployment. You successfully connected to MongoDB!",
     );
   } finally {
-    // Ensures that the client will close when you finish/error
     // await client.close();
   }
 }
